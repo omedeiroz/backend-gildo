@@ -1,6 +1,16 @@
 const pool = require('../config/database');
 
 class Pacote {
+    static async updateVagas(id, delta) {
+      const query = `
+        UPDATE pacotes
+        SET vagas_disponiveis = vagas_disponiveis + $1
+        WHERE id = $2
+        RETURNING *
+      `;
+      const result = await pool.query(query, [delta, id]);
+      return result.rows[0];
+    }
   static async create(data) {
     const {
       titulo,
