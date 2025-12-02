@@ -83,6 +83,7 @@ CREATE TABLE reservas (
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
   pacote_id INTEGER NOT NULL REFERENCES pacotes(id) ON DELETE CASCADE,
   forma_pagamento VARCHAR(20) NOT NULL CHECK (forma_pagamento IN ('dinheiro', 'milhas', 'misto')),
+  vagas INTEGER NOT NULL DEFAULT 1,
   valor_pago DECIMAL(10, 2),
   milhas_utilizadas INTEGER,
   milhas_geradas INTEGER DEFAULT 0,

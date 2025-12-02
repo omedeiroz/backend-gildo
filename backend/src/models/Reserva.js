@@ -2,15 +2,15 @@ const pool = require('../config/database');
 
 class Reserva {
   static async create(data) {
-    const { usuario_id, pacote_id, forma_pagamento, valor_pago, milhas_utilizadas, milhas_geradas = 0, cotacao_id = null } = data;
+    const { usuario_id, pacote_id, forma_pagamento, valor_pago, milhas_utilizadas, milhas_geradas = 0, cotacao_id = null, vagas = 1 } = data;
 
     const query = `
-      INSERT INTO reservas (usuario_id, pacote_id, forma_pagamento, valor_pago, milhas_utilizadas, milhas_geradas, cotacao_id, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendente')
+      INSERT INTO reservas (usuario_id, pacote_id, forma_pagamento, vagas, valor_pago, milhas_utilizadas, milhas_geradas, cotacao_id, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pendente')
       RETURNING *
     `;
 
-    const values = [usuario_id, pacote_id, forma_pagamento, valor_pago, milhas_utilizadas, milhas_geradas, cotacao_id];
+    const values = [usuario_id, pacote_id, forma_pagamento, vagas, valor_pago, milhas_utilizadas, milhas_geradas, cotacao_id];
     const result = await pool.query(query, values);
     return result.rows[0];
   }
