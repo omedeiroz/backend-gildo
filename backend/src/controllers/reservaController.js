@@ -10,7 +10,7 @@ class ReservaController {
     try {
       await client.query('BEGIN');
 
-      const { pacote_id, forma_pagamento, valor_dinheiro, valor_milhas, cotacao_id, origem, destino, dataIda, dataVolta } = req.body;
+      const { pacote_id, forma_pagamento, valor_dinheiro, valor_milhas, cotacao_id, origem, destino, dataIda, dataVolta, vagas } = req.body;
       const usuario_id = req.userId;
 
       if (!pacote_id || !forma_pagamento) {
@@ -27,9 +27,10 @@ class ReservaController {
         return res.status(404).json({ error: 'Pacote não encontrado' });
       }
 
-      if (pacote.vagas_disponiveis <= 0) {
+      const vagasCompradas = parseInt(vagas) > 0 ? parseInt(vagas) : 1;
+      if (pacote.vagas_disponiveis < vagasCompradas) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Não há vagas disponíveis' });
+        return res.status(400).json({ error: 'Não há vagas suficientes disponíveis' });
       }
 
       const usuario = await User.findById(usuario_id);
@@ -42,7 +43,7 @@ class ReservaController {
       let cotacaoInfo = null;
 
       if (forma_pagamento === 'dinheiro') {
-        valorDinheiro = pacote.preco_dinheiro;
+        valorDinheiro = pacote.preco_dinheiro * vagasCompradas;
         if (parseFloat(usuario.saldo_dinheiro) < valorDinheiro) {
           await client.query('ROLLBACK');
           return res.status(400).json({ 
@@ -53,9 +54,13 @@ class ReservaController {
         }
         valor_pago = valorDinheiro;
         milhas_utilizadas = 0;
-        await User.updateSaldos(usuario_id, usuario.saldo_dinheiro - valorDinheiro, usuario.saldo_milhas);
+        await User.updateSaldos(
+          usuario_id,
+          Math.max(0, usuario.saldo_dinheiro - valorDinheiro),
+          usuario.saldo_milhas
+        );
       } else if (forma_pagamento === 'milhas') {
-        valorMilhas = pacote.preco_milhas;
+        valorMilhas = pacote.preco_milhas * vagasCompradas;
         if (parseInt(usuario.saldo_milhas) < valorMilhas) {
           await client.query('ROLLBACK');
           return res.status(400).json({ 
@@ -66,15 +71,19 @@ class ReservaController {
         }
         valor_pago = 0;
         milhas_utilizadas = valorMilhas;
-        await User.updateSaldos(usuario_id, usuario.saldo_dinheiro, usuario.saldo_milhas - valorMilhas);
+        await User.updateSaldos(
+          usuario_id,
+          usuario.saldo_dinheiro,
+          Math.max(0, usuario.saldo_milhas - valorMilhas)
+        );
       } else if (forma_pagamento === 'misto') {
         // Compra mista: precisa dos valores de composição e cotação
         if (!valor_dinheiro || !valor_milhas) {
           await client.query('ROLLBACK');
           return res.status(400).json({ error: 'Valores de composição (dinheiro e milhas) são obrigatórios para pagamento misto.' });
         }
-        valorDinheiro = parseFloat(valor_dinheiro);
-        valorMilhas = parseInt(valor_milhas);
+        valorDinheiro = parseFloat(valor_dinheiro) * vagasCompradas;
+        valorMilhas = parseInt(valor_milhas) * vagasCompradas;
         if (usuario.saldo_dinheiro < valorDinheiro) {
           await client.query('ROLLBACK');
           return res.status(400).json({ error: 'Saldo em dinheiro insuficiente', saldo_atual: usuario.saldo_dinheiro, valor_necessario: valorDinheiro });
@@ -88,7 +97,11 @@ class ReservaController {
         // (pode ser expandido para buscar cotação real)
         valor_pago = valorDinheiro;
         milhas_utilizadas = valorMilhas;
-        await User.updateSaldos(usuario_id, usuario.saldo_dinheiro - valorDinheiro, usuario.saldo_milhas - valorMilhas);
+        await User.updateSaldos(
+          usuario_id,
+          Math.max(0, usuario.saldo_dinheiro - valorDinheiro),
+          Math.max(0, usuario.saldo_milhas - valorMilhas)
+        );
       }
 
 
@@ -96,7 +109,20 @@ class ReservaController {
       let milhas_geradas = 0;
       if (valor_pago && valor_pago > 0) {
         milhas_geradas = Math.floor(valor_pago); // regra simples: 1 real = 1 milha
-        await User.updateSaldos(usuario_id, undefined, (usuario.saldo_milhas - (milhas_utilizadas || 0)) + milhas_geradas);
+        // Promoção: compra feita com 30 dias ou mais de antecedência
+        if (dataIda) {
+          const hoje = new Date();
+          const dataIdaDate = new Date(dataIda);
+          const diffDias = Math.ceil((dataIdaDate - hoje) / (1000 * 60 * 60 * 24));
+          if (diffDias >= 30) {
+            milhas_geradas += 500;
+          }
+        }
+        await User.updateSaldos(
+          usuario_id,
+          undefined,
+          Math.max(0, (usuario.saldo_milhas - (milhas_utilizadas || 0)) + milhas_geradas)
+        );
       }
 
       // Registrar no extrato
@@ -136,10 +162,11 @@ class ReservaController {
         valor_pago,
         milhas_utilizadas,
         milhas_geradas,
-        cotacao_id: cotacao_id || null
+        cotacao_id: cotacao_id || null,
+        vagas: vagasCompradas
       });
 
-      await Pacote.updateVagas(pacote_id, -1);
+      await Pacote.updateVagas(pacote_id, -vagasCompradas);
 
       await client.query('COMMIT');
 
