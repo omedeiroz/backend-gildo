@@ -29,7 +29,9 @@ class AuthController {
           id: user.id,
           nome: user.nome,
           email: user.email,
-          perfil: user.perfil
+          perfil: user.perfil,
+          saldo_dinheiro: user.saldo_dinheiro,
+          saldo_milhas: user.saldo_milhas
         },
         accessToken,
         refreshToken
@@ -73,7 +75,9 @@ class AuthController {
           id: user.id,
           nome: user.nome,
           email: user.email,
-          perfil: user.perfil
+          perfil: user.perfil,
+          saldo_dinheiro: user.saldo_dinheiro,
+          saldo_milhas: user.saldo_milhas
         },
         accessToken,
         refreshToken
