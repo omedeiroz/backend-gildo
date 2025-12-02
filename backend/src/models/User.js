@@ -17,9 +17,14 @@ class User {
   }
 
   static async findByEmail(email) {
-    const query = 'SELECT * FROM usuarios WHERE email = $1 AND ativo = true';
+    const query = 'SELECT id, nome, email, perfil, auth_provider, saldo_dinheiro, saldo_milhas, senha FROM usuarios WHERE email = $1 AND ativo = true';
     const result = await pool.query(query, [email]);
-    return result.rows[0];
+    const user = result.rows[0];
+    if (user) {
+      user.saldo_dinheiro = isFinite(Number(user.saldo_dinheiro)) ? Number(user.saldo_dinheiro) : 0;
+      user.saldo_milhas = isFinite(Number(user.saldo_milhas)) ? Number(user.saldo_milhas) : 0;
+    }
+    return user;
   }
 
   static async findById(id) {
@@ -49,6 +54,7 @@ class User {
     let saldoMilhasVal = Number(saldoMilhas);
     if (!isFinite(saldoDinheiroVal)) saldoDinheiroVal = 0;
     if (!isFinite(saldoMilhasVal)) saldoMilhasVal = 0;
+    console.log('[updateSaldos] userId:', userId, 'saldoDinheiro:', saldoDinheiro, '->', saldoDinheiroVal, 'saldoMilhas:', saldoMilhas, '->', saldoMilhasVal);
     const query = `
       UPDATE usuarios 
       SET saldo_dinheiro = $1, saldo_milhas = $2 
@@ -56,6 +62,7 @@ class User {
       RETURNING id, saldo_dinheiro, saldo_milhas
     `;
     const result = await pool.query(query, [saldoDinheiroVal, saldoMilhasVal, userId]);
+    console.log('[updateSaldos] result:', result.rows[0]);
     return result.rows[0];
   }
 }
