@@ -1,7 +1,5 @@
 const Pacote = require('../models/Pacote');
 
-const { cotarPacote } = require('../services/cotacaoService');
-
 class PacoteController {
   async index(req, res) {
     try {
@@ -18,29 +16,10 @@ class PacoteController {
       };
 
       const pacotes = await Pacote.findAll(filters);
-      // Para cada pacote, buscar cotação dinâmica apenas para o preço
-      const pacotesComCotacao = await Promise.all(
-        pacotes.map(async (p) => {
-          const cotacao = await cotarPacote({
-            destino: p.destino,
-            data_ida: p.data_ida,
-            data_volta: p.data_volta,
-            hotel: p.hotel
-          });
-          return {
-            ...p,
-            preco_dinheiro: cotacao.preco_dinheiro,
-            preco_milhas: cotacao.preco_milhas,
-            moeda: cotacao.moeda,
-            milhas: cotacao.milhas,
-            desconto_percentual: cotacao.desconto_percentual,
-            motivo_desconto: cotacao.motivo_desconto
-          };
-        })
-      );
+
       res.json({
-        total: pacotesComCotacao.length,
-        pacotes: pacotesComCotacao
+        total: pacotes.length,
+        pacotes
       });
     } catch (error) {
       console.error('Erro ao listar pacotes:', error);
@@ -66,14 +45,14 @@ class PacoteController {
 
   async create(req, res) {
     try {
-
-
       const {
         titulo,
         descricao,
         destino,
         data_ida,
         data_volta,
+        preco_dinheiro,
+        preco_milhas,
         vagas_totais,
         imagem_url,
         imagens,
@@ -82,7 +61,9 @@ class PacoteController {
         categoria
       } = req.body;
 
-      if (!titulo || !destino || !data_ida || !data_volta || !vagas_totais) {
+
+      // Permitir descricao e translado em branco
+      if (!titulo || !destino || !data_ida || !data_volta || !preco_dinheiro || !preco_milhas || !vagas_totais) {
         return res.status(400).json({ error: 'Campos obrigatórios faltando' });
       }
 
@@ -93,22 +74,6 @@ class PacoteController {
       // Validação dos campos extras (opcional)
       if (imagens && !Array.isArray(imagens)) {
         return res.status(400).json({ error: 'O campo imagens deve ser um array de URLs' });
-      }
-
-      // Buscar cotação dinâmica antes de salvar
-      let preco_dinheiro = 0;
-      let preco_milhas = 0;
-      try {
-        const cotacao = await cotarPacote({
-          destino,
-          data_ida,
-          data_volta,
-          hotel
-        });
-        preco_dinheiro = cotacao.preco_dinheiro;
-        preco_milhas = cotacao.preco_milhas;
-      } catch (err) {
-        console.error('Erro ao buscar cotação dinâmica:', err);
       }
 
       const pacote = await Pacote.create({
@@ -141,14 +106,19 @@ class PacoteController {
   async update(req, res) {
     try {
       const { id } = req.params;
+      console.log('[UPDATE PACOTE] Usuário:', req.userId, '| Perfil:', req.userPerfil, '| Pacote ID:', id);
       const pacote = await Pacote.findById(id);
 
       if (!pacote) {
+        console.log('[UPDATE PACOTE] Pacote não encontrado:', id);
         return res.status(404).json({ error: 'Pacote não encontrado' });
       }
 
-      if (req.userPerfil !== 'agente' || pacote.agente_id !== req.userId) {
-        return res.status(403).json({ error: 'Sem permissão para editar este pacote' });
+      console.log('[UPDATE PACOTE] Dono do pacote:', pacote.agente_id);
+
+      if (req.userPerfil !== 'agente') {
+        console.log('[UPDATE PACOTE] Permissão negada. userPerfil:', req.userPerfil, '| userId:', req.userId, '| agente_id do pacote:', pacote.agente_id);
+        return res.status(403).json({ error: 'Sem permissão para editar este pacote', debug: { userPerfil: req.userPerfil, userId: req.userId, agente_id: pacote.agente_id } });
       }
 
       // Validação dos campos extras (opcional)
@@ -158,35 +128,42 @@ class PacoteController {
 
       const updated = await Pacote.update(id, req.body);
 
+      console.log('[UPDATE PACOTE] Pacote atualizado com sucesso:', id);
       res.json({
         message: 'Pacote atualizado com sucesso',
         pacote: updated
       });
     } catch (error) {
       console.error('Erro ao atualizar pacote:', error);
-      res.status(500).json({ error: 'Erro ao atualizar pacote' });
+      res.status(500).json({ error: 'Erro ao atualizar pacote', debug: error.message });
     }
   }
 
   async delete(req, res) {
     try {
       const { id } = req.params;
+      console.log('[DELETE PACOTE] Usuário:', req.userId, '| Perfil:', req.userPerfil, '| Pacote ID:', id);
       const pacote = await Pacote.findById(id);
 
       if (!pacote) {
+        console.log('[DELETE PACOTE] Pacote não encontrado:', id);
         return res.status(404).json({ error: 'Pacote não encontrado' });
       }
 
-      if (req.userPerfil !== 'agente' || pacote.agente_id !== req.userId) {
-        return res.status(403).json({ error: 'Sem permissão para deletar este pacote' });
+      console.log('[DELETE PACOTE] Dono do pacote:', pacote.agente_id);
+
+      if (req.userPerfil !== 'agente') {
+        console.log('[DELETE PACOTE] Permissão negada. userPerfil:', req.userPerfil, '| userId:', req.userId, '| agente_id do pacote:', pacote.agente_id);
+        return res.status(403).json({ error: 'Sem permissão para deletar este pacote', debug: { userPerfil: req.userPerfil, userId: req.userId, agente_id: pacote.agente_id } });
       }
 
       await Pacote.delete(id);
 
+      console.log('[DELETE PACOTE] Pacote deletado com sucesso:', id);
       res.json({ message: 'Pacote deletado com sucesso' });
     } catch (error) {
       console.error('Erro ao deletar pacote:', error);
-      res.status(500).json({ error: 'Erro ao deletar pacote' });
+      res.status(500).json({ error: 'Erro ao deletar pacote', debug: error.message });
     }
   }
 }
